@@ -1,0 +1,24 @@
+Use the claude_design MCP (https://api.anthropic.com/v1/design/mcp, auth via /design-login) to import this project:
+https://claude.ai/design/p/0bd17255-d72d-4427-93d3-d278b267c5b1?file=Mission+Planning+Redesign.dc.html
+
+Focus on these files (the whole project is readable):
+- `Mission Planning Redesign.dc.html`
+
+Also read these files the selection imports:
+- `support.js`
+
+Implement: `Mission Planning Redesign.dc.html`
+
+
+
+-------------
+Use the claude_design MCP (https://api.anthropic.com/v1/design/mcp, auth via /design-login) to import this project:
+https://claude.ai/design/p/0bd17255-d72d-4427-93d3-d278b267c5b1?file=Mission+Planning+Stepper.dc.html
+
+Focus on these files (the whole project is readable):
+- `Mission Planning Stepper.dc.html`
+
+Also read these files the selection imports:
+- `support.js`
+
+Implement: `Mission Planning Stepper.dc.html`
