@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Satellite Pass Geometry</title>
+<style>
+:root{--bg:#0b1220;--fg:#e6edf7;--mut:#8fa1bd;--card:#141d30;--bd:#25324d;--ok:#3ddc97;--bad:#ff5d6c;--acc:#5aa9ff;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:light){:root:not([data-theme="dark"]){--bg:#f3f6fb;--fg:#10213d;--mut:#5b6b85;--card:#fff;--bd:#d3dbe8}}
+:root[data-theme="light"]{--bg:#f3f6fb;--fg:#10213d;--mut:#5b6b85;--card:#fff;--bd:#d3dbe8}
+:root[data-theme="dark"]{--bg:#0b1220;--fg:#e6edf7;--mut:#8fa1bd;--card:#141d30;--bd:#25324d}
+*{box-sizing:border-box}html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:12px;max-width:900px;margin:auto}
+h1{font-size:18px;margin:4px 0 2px}p.s{color:var(--mut);margin:0 0 10px;font-size:12px}
+#view{position:relative;height:52vh;min-height:320px;background:#0b1220;border-radius:12px;overflow:hidden;touch-action:none}
+#view canvas{display:block;width:100%;height:100%}
+.lb{position:absolute;font-size:11px;padding:1px 5px;border-radius:4px;background:rgba(10,15,28,.8);color:#fff;pointer-events:none;white-space:nowrap;transform:translate(-50%,-50%)}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:8px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:8px 10px}
+.card b{display:block;font-size:20px}.card span{color:var(--mut);font-size:11px}
+#st{grid-column:1/-1;text-align:center;font-weight:600;padding:8px;border-radius:10px}
+.ok{background:rgba(61,220,151,.15);color:var(--ok)}.no{background:rgba(255,93,108,.15);color:var(--bad)}
+label{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:6px 0;font-size:13px}
+input[type=number]{width:90px;background:var(--bg);color:var(--fg);border:1px solid var(--bd);border-radius:6px;padding:5px}
+input[type=range]{width:100%}button{background:var(--acc);color:#04111f;border:0;border-radius:8px;padding:8px 14px;font-weight:600}
+canvas#ch{width:100%;height:190px;display:block}
+.sum{font-size:13px}.sum div{margin:3px 0}
+@media(min-width:700px){.grid{grid-template-columns:repeat(4,1fr)}}
+</style></head><body>
+<h1>🛰️ Satellite Pass Geometry</h1>
+<p class="s">Enter the target and minimum elevation, then start. Everything else is computed.</p>
+<div class="card" id="setup"><b>Target &amp; one limit (enter either)</b>
+<label>Target latitude (°)<input type="number" id="lat" value="20" min="-90" max="90"></label>
+<label>Target longitude (°)<input type="number" id="lon" value="78" min="-180" max="180"></label>
+<label>Enter<select id="mode" style="background:var(--bg);color:var(--fg);border:1px solid var(--bd);border-radius:6px;padding:5px"><option value="el">Minimum elevation (≥ 5°)</option><option value="rg">Maximum range (≤ 1800 km)</option></select></label>
+<label><span id="unit">Elevation (°)</span><input type="number" id="val" value="5" step="any"></label>
+<button id="go" style="width:100%;margin-top:6px">▶ Start simulation</button></div>
+<div id="sim" style="display:none"><p class="s" style="margin-top:10px">Drag to rotate · scroll/pinch to zoom.</p>
+<div id="view"></div>
+<div class="grid">
+<div class="card"><span>Elevation (at target)</span><b id="vEl">–</b></div>
+<div class="card"><span>Tilt / off-nadir (at sat)</span><b id="vTi">–</b></div>
+<div class="card"><span>Slant range</span><b id="vRg">–</b></div>
+<div class="card"><span>Time from closest approach</span><b id="vT">–</b></div>
+<div id="st"></div></div>
+<div class="card" style="margin-top:8px">
+<details><summary>Advanced orbit settings</summary><label>Orbit altitude (km)<input type="number" id="alt" value="500" min="200" max="2000"></label>
+<label>Orbit inclination (°)<input type="number" id="inc" value="97.4" min="0" max="180" step="0.1"></label>
+<label>Orbit RAAN (°, blank = auto)<input type="number" id="raan" value="" placeholder="auto"></label></details>
+<label style="display:block">Position along pass<input type="range" id="sl" min="-1000" max="1000" value="-1000"></label>
+<div style="display:flex;gap:8px;align-items:center"><button id="pp">Pause</button><button id="stp" style="background:#ff5d6c">Stop</button><label style="margin:0;gap:4px"><input type="checkbox" id="loop" checked>Loop</label><label style="flex:1;margin:0">Speed<input type="range" id="spd" min="0.2" max="3" step="0.1" value="1"></label></div>
+</div>
+<div class="card" style="margin-top:8px"><canvas id="ch"></canvas>
+<div style="font-size:11px;color:var(--mut)"><span style="color:#5aa9ff">■ elevation °</span> &nbsp;<span style="color:#ffb454">■ tilt °</span> &nbsp;<span style="color:#ff6bd6">■ range (right axis, km)</span> &nbsp;<span style="color:#3ddc97">▒ valid window</span></div></div>
+<div class="card sum" id="sum" style="margin-top:8px"></div></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const R=6371,MU=398600.4418,D=Math.PI/180,K=.001,$=id=>document.getElementById(id);
+const f=(x,d=1)=>isFinite(x)?x.toFixed(d):'–';
+const geo=(th,a)=>{const d=Math.sqrt(R*R+a*a-2*R*a*Math.cos(th));return{d,el:Math.asin((a*Math.cos(th)-R)/d)/D,tilt:Math.asin(Math.min(1,R*Math.sin(th)/d))/D}};
+const thEl=(el,a)=>{const e=el*D;return Math.PI/2-e-Math.asin(R*Math.cos(e)/a)};
+const thRg=(d,a)=>Math.acos(Math.max(-1,Math.min(1,(R*R+a*a-d*d)/(2*R*a))));
+let P={},s=-1,play=true,last=performance.now();
+// ---- three.js
+const view=$('view');
+const scene=new THREE.Scene();
+const cam=new THREE.PerspectiveCamera(45,1,.01,100);
+const ren=new THREE.WebGLRenderer({antialias:true,alpha:true});
+ren.setPixelRatio(Math.min(devicePixelRatio,2));view.appendChild(ren.domElement);
+scene.add(new THREE.AmbientLight(0xffffff,.6));
+const dl=new THREE.DirectionalLight(0xffffff,.9);dl.position.set(30,20,15);scene.add(dl);
+const earth=new THREE.Mesh(new THREE.SphereGeometry(R*K,72,48),new THREE.MeshPhongMaterial({color:0x1f5a99}));scene.add(earth);
+scene.add(new THREE.Mesh(new THREE.SphereGeometry(R*K*1.001,36,24),new THREE.MeshBasicMaterial({color:0x7fb8ff,wireframe:true,transparent:true,opacity:.18})));
+const tgt=new THREE.Mesh(new THREE.SphereGeometry(.05,16,12),new THREE.MeshBasicMaterial({color:0xff3b4e}));scene.add(tgt);
+// satellite model
+const sat=new THREE.Group();
+const body=new THREE.Mesh(new THREE.BoxGeometry(.1,.1,.16),new THREE.MeshPhongMaterial({color:0xcfd6e2}));sat.add(body);
+const pm=new THREE.MeshPhongMaterial({color:0x2a4fb0,side:2});
+[-1,1].forEach(sg=>{const p=new THREE.Mesh(new THREE.BoxGeometry(.28,.005,.12),pm);p.position.x=sg*.2;sat.add(p)});
+const cone=new THREE.Mesh(new THREE.ConeGeometry(.04,.08,12),new THREE.MeshPhongMaterial({color:0xffd24a}));cone.rotation.x=Math.PI/2;cone.position.z=.11;sat.add(cone);
+scene.add(sat);
+const mkLine=c=>{const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(new Float32Array(300),3));const l=new THREE.Line(g,new THREE.LineBasicMaterial({color:c}));l.frustumCulled=false;scene.add(l);return l};
+const Lnad=mkLine(0xffd24a),Llos=mkLine(0xffffff),Lgr=mkLine(0x9aa7bd),Lel=mkLine(0x5aa9ff),Lti=mkLine(0xffb454);
+const setL=(l,pts)=>{const a=l.geometry.attributes.position;pts.forEach((p,i)=>a.setXYZ(i,p.x,p.y,p.z));l.geometry.setDrawRange(0,pts.length);a.needsUpdate=true};
+const arc=(c,v1,v2,r,n=14)=>{const o=[];for(let i=0;i<=n;i++){const t=i/n;o.push(c.clone().add(v1.clone().multiplyScalar(1-t).add(v2.clone().multiplyScalar(t)).normalize().multiplyScalar(r)))}return o};
+let orbitMesh,winMesh;
+const labels={};['Target','Nadir','El','Tilt','Range'].forEach(n=>{const d=document.createElement('div');d.className='lb';view.appendChild(d);labels[n]=d});
+// camera
+let az=.55,pol=1.05,dist=8,F=new THREE.Vector3();
+function placeCam(){cam.position.set(F.x+dist*Math.sin(pol)*Math.cos(az),F.y+dist*Math.cos(pol),F.z+dist*Math.sin(pol)*Math.sin(az));cam.lookAt(F)}
+let drag=null;view.addEventListener('pointerdown',e=>{drag=[e.clientX,e.clientY]});
+addEventListener('pointerup',()=>drag=null);
+addEventListener('pointermove',e=>{if(!drag)return;az-=(e.clientX-drag[0])*.008;pol=Math.max(.15,Math.min(2.9,pol-(e.clientY-drag[1])*.008));drag=[e.clientX,e.clientY]});
+view.addEventListener('wheel',e=>{e.preventDefault();dist=Math.max(2,Math.min(20,dist*(1+e.deltaY*.001)))},{passive:false});
+const pts=new Map();view.addEventListener('pointermove',e=>{});
+view.addEventListener('touchmove',e=>{if(e.touches.length==2){const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);if(view._d)dist=Math.max(2,Math.min(20,dist*view._d/d));view._d=d}},{passive:true});
+view.addEventListener('touchend',()=>view._d=0);
+function resize(){const w=view.clientWidth,h=view.clientHeight;ren.setSize(w,h);cam.aspect=w/h;cam.updateProjectionMatrix()}
+addEventListener('resize',()=>{resize();drawChart()});
+// ---- params
+function update(){
+ const alt=+$('alt').value,mode=$('mode').value,v0=+$('val').value,lat=+$('lat').value*D,lon=+$('lon').value*D,inc=+$('inc').value*D,rv=$('raan').value;let rn=+rv*D;
+ const a=R+Math.max(alt,100);
+ let v=v0,mel,mrg,note='';
+ if(mode==='el'){const c=Math.min(89,Math.max(5,v));if(c!==v)note=' (clamped to '+c+'°: minimum allowed is 5°)';v=c;mel=v;mrg=geo(thEl(mel,a),a).d}
+ else{const c=Math.min(1800,Math.max(Math.max(alt,1),v));if(c!==v)note=' (clamped to '+c+' km: maximum allowed is 1800 km)';v=c;mrg=v;mel=geo(thRg(mrg,a),a).el}
+ if(rv===''){const tm=Math.min(thEl(mel,a),thRg(mrg,a)),gt=.5*Math.max(tm,.02),x=(Math.sin(gt)-Math.sin(lat)*Math.cos(inc))/(Math.cos(lat)*Math.sin(inc));rn=lon+Math.asin(Math.max(-1,Math.min(1,x)))}
+ const g=Math.asin(Math.max(-1,Math.min(1,Math.cos(lat)*Math.sin(inc)*Math.sin(rn-lon)+Math.sin(lat)*Math.cos(inc)))),cg=Math.cos(g),ag=Math.abs(g);
+ const tE=thEl(mel,a),tR=thRg(mrg,a),tM=Math.min(tE,tR),tH=thEl(0,a);
+ const ok=ag<tM,u0=ok?Math.acos(Math.min(1,Math.cos(tM)/cg)):0,uS=ag<tH?Math.acos(Math.cos(tH)/cg):.2;
+ P={a,g,cg,mel,mrg,tE,tR,tM,ok,u0,uS,w:Math.sqrt(MU/(a*a*a)),bind:mode==='el'?'elevation':'range',mode,v,note};
+ const n=new THREE.Vector3(cg,Math.sin(g),0);P.n=n;
+ tgt.position.copy(n).multiplyScalar(R*K);
+ F.copy(n).multiplyScalar(R*K+.5);
+ const arcPts=(u1,u2,N)=>{const o=[];for(let i=0;i<=N;i++){const u=u1+(u2-u1)*i/N;o.push(new THREE.Vector3(Math.cos(u),0,Math.sin(u)).multiplyScalar(a*K))}return o};
+ [orbitMesh,winMesh].forEach(m=>m&&scene.remove(m));
+ orbitMesh=new THREE.Line(new THREE.BufferGeometry().setFromPoints(arcPts(-Math.PI,Math.PI,240)),new THREE.LineBasicMaterial({color:0x6a7fa8}));
+ scene.add(orbitMesh);
+ if(ok){winMesh=new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(arcPts(-u0,u0,40)),60,.014,6),new THREE.MeshBasicMaterial({color:0x3ddc97}));scene.add(winMesh)}
+ summary();drawChart();
+}
+function summary(){
+ const gE=geo(P.tE,P.a),gR=geo(P.tR,P.a),T=2*Math.PI/P.w/60;
+ const hz=geo(P.tH||thEl(0,P.a),P.a);
+ $('sum').innerHTML=
+ `<div><b>Target distance from ground track:</b> ${f(Math.abs(P.g)*R,0)} km (cross-track)</div>`+`<div><b>Orbit period:</b> ${f(T,1)} min · <b>Limit that binds:</b> ${P.bind}</div>`+
+ `<div><b>You entered:</b> ${P.mode==='el'?'min elevation '+f(P.v)+'°':'max range '+f(P.v,0)+' km'}${P.note}</div>`+
+ `<div><b>Calculated:</b> ${P.mode==='el'?'max range = '+f(gE.d,0)+' km':'min elevation = '+f(gE.el)+'°'}, tilt = ${f(gE.tilt)}°</div>`+
+ (gE.d>1800.5?`<div style="color:var(--bad)">Note: this range is above the 1800 km mission limit.</div>`:'')+(gE.el<4.99?`<div style="color:var(--bad)">Note: this elevation is below the 5° mission limit.</div>`:'')+
+ (P.ok?`<div><b>Valid window:</b> one continuous interval, ${f(2*P.u0/P.w,0)} s long (±${f(P.u0/P.w,0)} s around closest approach). It never re-enters after leaving.</div>`
+ :`<div style="color:var(--bad)"><b>No valid pass:</b> the target is too far off the ground track for these limits.</div>`);
+}
+function state(u){const th=Math.acos(Math.max(-1,Math.min(1,P.cg*Math.cos(u))));return Object.assign({th},geo(th,P.a))}
+function drawChart(){
+ const c=$('ch'),w=c.width=c.clientWidth*devicePixelRatio,h=c.height=190*devicePixelRatio,x=c.getContext('2d');
+ const st=getComputedStyle(document.documentElement),mut=st.getPropertyValue('--mut');x.scale(1,1);
+ const W=w,H=h,L=34*devicePixelRatio,Rr=44*devicePixelRatio,T=8*devicePixelRatio,B=18*devicePixelRatio;
+ const X=u=>L+(u/P.uS+1)/2*(W-L-Rr),Y=v=>H-B-v/90*(H-T-B);
+ x.fillStyle='rgba(61,220,151,.18)';if(P.ok)x.fillRect(X(-P.u0),T,X(P.u0)-X(-P.u0),H-T-B);
+ x.strokeStyle=mut;x.fillStyle=mut;x.font=10*devicePixelRatio+'px sans-serif';x.lineWidth=1;
+ [0,30,60,90].forEach(v=>{x.beginPath();x.moveTo(L,Y(v));x.lineTo(W-Rr,Y(v));x.globalAlpha=.25;x.stroke();x.globalAlpha=1;x.fillText(v+'°',2,Y(v)+3)});
+ const rm=3000;[0,1000,2000,3000].forEach(v=>x.fillText(v,W-Rr+4,Y(v/rm*90)+3));
+ // limit lines
+ x.setLineDash([4,4]);x.strokeStyle='#5aa9ff';x.beginPath();x.moveTo(L,Y(P.mel));x.lineTo(W-Rr,Y(P.mel));x.stroke();
+ x.strokeStyle='#ff6bd6';x.beginPath();x.moveTo(L,Y(P.mrg/rm*90));x.lineTo(W-Rr,Y(P.mrg/rm*90));x.stroke();x.setLineDash([]);
+ const N=160,cv=[['#5aa9ff',s=>s.el],['#ffb454',s=>s.tilt],['#ff6bd6',s=>s.d/rm*90]];
+ cv.forEach(([col,fn])=>{x.strokeStyle=col;x.lineWidth=2*devicePixelRatio;x.beginPath();for(let i=0;i<=N;i++){const u=-P.uS+2*P.uS*i/N,v=Math.max(0,Math.min(95,fn(state(u))));i?x.lineTo(X(u),Y(v)):x.moveTo(X(u),Y(v))}x.stroke()});
+ x.strokeStyle=mut;x.lineWidth=1;x.beginPath();x.moveTo(X(s*P.uS),T);x.lineTo(X(s*P.uS),H-B);x.stroke();
+ x.fillStyle=mut;x.fillText('start',L,H-4);x.fillText('closest approach',W/2-30*devicePixelRatio,H-4);x.fillText('end',W-Rr-18*devicePixelRatio,H-4);
+}
+const V=(x,y,z)=>new THREE.Vector3(x,y,z);
+function scr(p,el,txt){const q=p.clone().project(cam);el.style.left=(q.x*.5+.5)*view.clientWidth+'px';el.style.top=(-q.y*.5+.5)*view.clientHeight+'px';el.textContent=txt;el.style.display=q.z<1?'block':'none'}
+function frame(now){
+ const dt=Math.min(.05,(now-last)/1000);last=now;
+ if(play){s+=dt/6*(+$('spd').value);if(s>1){if($('loop').checked)s=-1;else{s=1;play=false;$('pp').textContent='Play'}}$('sl').value=s*1000}
+ const u=s*P.uS,S=state(u),a=P.a,sp=V(Math.cos(u),0,Math.sin(u)).multiplyScalar(a*K);
+ sat.position.copy(sp);sat.up.set(0,1,0);sat.lookAt(0,0,0);
+ const tp=tgt.position,sub=sp.clone().setLength(R*K),los=sp.clone().sub(tp);
+ setL(Lnad,[sp,sub]);
+ const good=S.el>=P.mel-1e-6&&S.d<=P.mrg+1e-6;
+ Llos.material.color.set(good?0x3ddc97:0xff5d6c);setL(Llos,[tp,sp]);
+ // ground line along earth surface target -> subpoint
+ const gp=[];for(let i=0;i<=20;i++)gp.push(tp.clone().multiplyScalar(1-i/20).add(sub.clone().multiplyScalar(i/20)).setLength(R*K*1.002));setL(Lgr,gp);
+ const nn=P.n,h=los.clone().sub(nn.clone().multiplyScalar(los.dot(nn)));if(h.length()<1e-6)h.set(0,0,1);h.normalize();
+ setL(Lel,arc(tp,h,los.clone().normalize(),.55));
+ const nd=sp.clone().negate().normalize(),tl=tp.clone().sub(sp).normalize();setL(Lti,arc(sp,nd,tl,.28));
+ placeCam();cam.updateMatrixWorld();
+ scr(tp.clone().add(nn.clone().multiplyScalar(.12)),labels.Target,'Target');
+ scr(sub,labels.Nadir,'Nadir pt');
+ scr(tp.clone().add(arc(V(0,0,0),h,los.clone().normalize(),.75)[7]),labels.El,'Elev');
+ scr(sp.clone().add(arc(V(0,0,0),nd,tl,.4)[7]),labels.Tilt,'Tilt');
+ scr(tp.clone().add(sp).multiplyScalar(.5),labels.Range,'Range');
+ $('vEl').textContent=f(S.el)+'°';$('vTi').textContent=f(S.tilt)+'°';$('vRg').textContent=f(S.d,0)+' km';
+ $('vT').textContent=f(u/P.w,0)+' s';
+ const stt=$('st');stt.className=good?'ok':'no';
+ stt.textContent=good?'✔ INSIDE mission limits (imaging allowed)':'✖ OUTSIDE limits: '+(S.el<P.mel-1e-6?'elevation too low':'')+(S.el<P.mel-1e-6&&S.d>P.mrg?' & ':'')+(S.d>P.mrg+1e-6?'range too long':'');
+ drawChart();ren.render(scene,cam);requestAnimationFrame(frame);
+}
+['alt','val','lat','lon','inc','raan'].forEach(i=>$(i).addEventListener('input',()=>{if(started)update()}));
+$('sl').addEventListener('input',e=>{s=e.target.value/1000;play=false;$('pp').textContent='Play'});
+$('stp').onclick=()=>{s=-1;play=false;$('pp').textContent='Play';$('sl').value=-1000};
+$('pp').onclick=()=>{if(!play&&s>=1)s=-1;play=!play;$('pp').textContent=play?'Pause':'Play'};
+let started=false;
+$('mode').addEventListener('change',()=>{const e=$('mode').value==='el';$('val').value=e?5:1800;$('unit').textContent=e?'Elevation (°)':'Range (km)';if(started)update()});
+$('go').onclick=()=>{$('sim').style.display='block';resize();update();s=-1;play=true;$('pp').textContent='Pause';$('sl').value=-1000;if(!started){started=true;last=performance.now();requestAnimationFrame(frame)}$('sim').scrollIntoView({behavior:'smooth'})};
+</script></body></html>
